@@ -11,13 +11,14 @@
 <input type="file" id="midiFile" accept=".mid,.midi">
 <button id="playBtn">Generate & Play</button>
 
-<script src="https://cdn.jsdelivr.net/npm/midiconvert@0.5.2/build/MidiConvert.min.js"></script>
+<!-- ToneJS MIDI library -->
+<script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.27/build/Midi.min.js"></script>
+
 <script>
 const ROOT_NOTE = 70; // C4 sample root
 const context = new (window.AudioContext || window.webkitAudioContext)();
 
 function pitchShift(buffer, semitoneShift) {
-    // Approximate pitch shift using playbackRate
     const rate = Math.pow(2, semitoneShift / 12);
     const offlineCtx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
     const source = offlineCtx.createBufferSource();
@@ -40,12 +41,12 @@ document.getElementById('playBtn').addEventListener('click', async () => {
     const wavArray = await wavInput.arrayBuffer();
     const sampleBuffer = await context.decodeAudioData(wavArray);
 
-    // Load MIDI
+    // Load MIDI using Tone.js
     const midiArray = await midiInput.arrayBuffer();
-    const midiData = MidiConvert.parse(midiArray);
+    const midi = new TonejsMidi.Midi(midiArray);
 
     // Schedule notes
-    midiData.tracks.forEach(track => {
+    midi.tracks.forEach(track => {
         track.notes.forEach(async note => {
             const semitoneShift = note.midi - ROOT_NOTE;
             const shiftedBuffer = await pitchShift(sampleBuffer, semitoneShift);
