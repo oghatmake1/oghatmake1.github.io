@@ -3,95 +3,51 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MIDI Audio Generator</title>
+<title>MIDI Sample Player</title>
 </head>
 <body>
-<h1>MIDI Audio Generator</h1>
+<h1>MIDI Sample Player</h1>
 <input type="file" id="wavFile" accept=".wav">
 <input type="file" id="midiFile" accept=".mid,.midi">
-<button id="playBtn">Generate & Play</button>
-<button id="downloadBtn" disabled>Download OGG</button>
+<button id="playBtn">Play MIDI</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.27/build/Midi.min.js"></script>
 
 <script>
-const ROOT_NOTE = 70;
+const ROOT_NOTE = 70; // Root MIDI note of the sample
 const context = new (window.AudioContext || window.webkitAudioContext)();
-
-async function pitchShift(buffer, semitoneShift) {
-    const rate = Math.pow(2, semitoneShift / 12);
-    const offlineCtx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
-    const source = offlineCtx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = rate;
-    source.connect(offlineCtx.destination);
-    source.start(0);
-    return offlineCtx.startRendering();
-}
 
 document.getElementById('playBtn').addEventListener('click', async () => {
     const wavInput = document.getElementById('wavFile').files[0];
     const midiInput = document.getElementById('midiFile').files[0];
-    if (!wavInput || !midiInput) return alert("Select both WAV and MIDI!");
+    if (!wavInput || !midiInput) {
+        alert("Select both WAV and MIDI files!");
+        return;
+    }
 
+    // Decode sample
     const wavArray = await wavInput.arrayBuffer();
     const sampleBuffer = await context.decodeAudioData(wavArray);
 
+    // Load MIDI
     const midiArray = await midiInput.arrayBuffer();
     const midi = new TonejsMidi.Midi(midiArray);
 
-    const masterBufferLength = Math.ceil((midi.duration + 1) * sampleBuffer.sampleRate);
-    const masterBuffer = context.createBuffer(sampleBuffer.numberOfChannels, masterBufferLength, sampleBuffer.sampleRate);
-
-    // Mix notes into masterBuffer
-    for (const track of midi.tracks) {
-        for (const note of track.notes) {
+    const startTime = context.currentTime + 0.5; // slight delay
+    midi.tracks.forEach(track => {
+        track.notes.forEach(note => {
             const semitoneShift = note.midi - ROOT_NOTE;
-            const shifted = await pitchShift(sampleBuffer, semitoneShift);
+            const source = context.createBufferSource();
+            source.buffer = sampleBuffer;
+            source.playbackRate.value = Math.pow(2, semitoneShift / 12);
 
-            for (let ch = 0; ch < masterBuffer.numberOfChannels; ch++) {
-                const masterData = masterBuffer.getChannelData(ch);
-                const shiftedData = shifted.getChannelData(ch);
-                const startSample = Math.floor(note.time * sampleBuffer.sampleRate);
-                for (let i = 0; i < shiftedData.length; i++) {
-                    if (startSample + i < masterData.length) {
-                        masterData[startSample + i] += shiftedData[i] * (note.velocity / 127);
-                    }
-                }
-            }
-        }
-    }
+            const gainNode = context.createGain();
+            gainNode.gain.value = note.velocity / 127;
 
-    // Play
-    const source = context.createBufferSource();
-    source.buffer = masterBuffer;
-    source.connect(context.destination);
-    source.start();
-
-    // Enable download
-    document.getElementById('downloadBtn').disabled = false;
-
-    // Convert to OGG using MediaRecorder
-    const dest = context.createMediaStreamDestination();
-    source.disconnect();
-    source.connect(dest);
-    source.start();
-    const recorder = new MediaRecorder(dest.stream);
-    const chunks = [];
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-        const url = URL.createObjectURL(blob);
-        const downloadBtn = document.getElementById('downloadBtn');
-        downloadBtn.onclick = () => {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'output.ogg';
-            a.click();
-        };
-    };
-    recorder.start();
-    setTimeout(() => recorder.stop(), (masterBuffer.length / sampleBuffer.sampleRate) * 1000);
+            source.connect(gainNode).connect(context.destination);
+            source.start(startTime + note.time);
+        });
+    });
 });
 </script>
 </body>
