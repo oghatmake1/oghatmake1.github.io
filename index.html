@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIDI Audio Generator</title>
+</head>
+<body>
+<h1>MIDI Audio Generator</h1>
+<input type="file" id="wavFile" accept=".wav">
+<input type="file" id="midiFile" accept=".mid,.midi">
+<button id="playBtn">Generate & Play</button>
+
+<script src="https://cdn.jsdelivr.net/npm/midiconvert@0.5.2/build/MidiConvert.min.js"></script>
+<script>
+const ROOT_NOTE = 70; // C4 sample root
+const context = new (window.AudioContext || window.webkitAudioContext)();
+
+function pitchShift(buffer, semitoneShift) {
+    // Approximate pitch shift using playbackRate
+    const rate = Math.pow(2, semitoneShift / 12);
+    const offlineCtx = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    return offlineCtx.startRendering();
+}
+
+document.getElementById('playBtn').addEventListener('click', async () => {
+    const wavInput = document.getElementById('wavFile').files[0];
+    const midiInput = document.getElementById('midiFile').files[0];
+    if (!wavInput || !midiInput) {
+        alert("Select both WAV and MIDI files!");
+        return;
+    }
+
+    // Load WAV
+    const wavArray = await wavInput.arrayBuffer();
+    const sampleBuffer = await context.decodeAudioData(wavArray);
+
+    // Load MIDI
+    const midiArray = await midiInput.arrayBuffer();
+    const midiData = MidiConvert.parse(midiArray);
+
+    // Schedule notes
+    midiData.tracks.forEach(track => {
+        track.notes.forEach(async note => {
+            const semitoneShift = note.midi - ROOT_NOTE;
+            const shiftedBuffer = await pitchShift(sampleBuffer, semitoneShift);
+
+            const source = context.createBufferSource();
+            source.buffer = shiftedBuffer;
+            const gainNode = context.createGain();
+            gainNode.gain.value = note.velocity / 127;
+            source.connect(gainNode).connect(context.destination);
+            source.start(context.currentTime + note.time);
+        });
+    });
+});
+</script>
+</body>
+</html>
