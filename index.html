@@ -1,1 +1,62 @@
-TODO
+<!DOCTYPE html>
+<html>
+<head>
+	<!--TODO-->
+</head>
+<body>
+<h1 id="-oghatmaker-"><strong>OGHatMaker</strong></h1>
+<p><strong>i code in python</strong></p>
+<pre><code class="lang-py"><span class="hljs-built_in">import</span> numpy as np
+<span class="hljs-built_in">import</span> pretty_midi
+<span class="hljs-built_in">import</span> librosa
+<span class="hljs-built_in">import</span> soundfile as sf
+<span class="hljs-built_in">import</span> subprocess
+<span class="hljs-built_in">import</span> os
+
+<span class="hljs-attr">WAV_FILE</span> = <span class="hljs-string">"videoplaybacsk.wav"</span>
+<span class="hljs-attr">MIDI_FILE</span> = <span class="hljs-string">"ab.mid"</span>
+<span class="hljs-attr">TEMP_WAV</span> = <span class="hljs-string">"temp_output.wav"</span>
+<span class="hljs-attr">OUTPUT_OGG</span> = <span class="hljs-string">"output5.ogg"</span>
+
+<span class="hljs-attr">ROOT_NOTE</span> = <span class="hljs-number">70</span>
+<span class="hljs-attr">SR</span> = <span class="hljs-number">44100</span>
+
+sample, <span class="hljs-attr">sr</span> = librosa.load(WAV_FILE, <span class="hljs-attr">sr=SR)</span>
+
+<span class="hljs-attr">midi</span> = pretty_midi.PrettyMIDI(MIDI_FILE)
+
+<span class="hljs-attr">end_time</span> = midi.get_end_time()
+<span class="hljs-attr">output</span> = np.zeros(int(end_time * SR) + SR, <span class="hljs-attr">dtype=np.float32)</span>
+
+for instrument <span class="hljs-keyword">in</span> midi.instruments:
+    for note <span class="hljs-keyword">in</span> instrument.notes:
+        <span class="hljs-attr">semitones</span> = note.pitch - ROOT_NOTE
+        <span class="hljs-attr">shifted</span> = librosa.effects.pitch_shift(sample, <span class="hljs-attr">sr=sr,</span> <span class="hljs-attr">n_steps=semitones)</span>
+        shifted *= (note.velocity / <span class="hljs-number">127.0</span>)
+        <span class="hljs-attr">start</span> = int(note.start * SR)
+        <span class="hljs-attr">end</span> = start + len(shifted)
+        <span class="hljs-keyword">if</span> end &gt; len(output):
+            <span class="hljs-attr">output</span> = np.pad(output, (<span class="hljs-number">0</span>, end - len(output)))
+        output[start:end] += shifted.astype(np.float32)
+
+output /= np.max(np.abs(output) + <span class="hljs-number">1</span>e-<span class="hljs-number">6</span>)
+<span class="hljs-attr">TEMP_WAV</span> = <span class="hljs-string">"temp.wav"</span> <span class="hljs-comment">#DO NOT CHANGE</span>
+sf.write(TEMP_WAV, output, SR)
+subprocess.run([
+    <span class="hljs-string">"ffmpeg"</span>,
+    <span class="hljs-string">"-y"</span>,
+    <span class="hljs-string">"-i"</span>, TEMP_WAV,
+    <span class="hljs-string">"-c:a"</span>, <span class="hljs-string">"libvorbis"</span>,
+    <span class="hljs-string">"-q:a"</span>, <span class="hljs-string">"6"</span>,
+    OUTPUT_OGG
+])
+
+<span class="hljs-comment"># === DELETE TEMP WAV ===</span>
+os.remove(TEMP_WAV)
+
+print(<span class="hljs-string">"Rendered audio saved to"</span>, OUTPUT_OGG)
+</code></pre>
+
+</body>
+
+</html>
